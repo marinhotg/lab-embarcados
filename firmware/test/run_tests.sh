@@ -24,8 +24,8 @@ FIM=$(($(grep -n '^static void odometry_task' "$MAIN/odometry.c" | cut -d: -f1) 
 gcc $CFLAGS -o "$OUT/test_odom" "$OUT/test_odom.c" -lm
 
 # ---- payload de telemetria -------------------------------------------------
-INI=$(grep -n '^/\* Todo acrescimo passa por aqui' "$MAIN/telemetry.c" | cut -d: -f1)
-FIM=$(($(grep -n '^ \* Tarefa$' "$MAIN/telemetry.c" | cut -d: -f1) - 3))
+INI=$(grep -n '^#define APPEND' "$MAIN/telemetry.c" | cut -d: -f1)
+FIM=$(($(grep -n '^static void telemetry_task' "$MAIN/telemetry.c" | cut -d: -f1) - 1))
 {
     cat <<'STUB'
 #include <inttypes.h>

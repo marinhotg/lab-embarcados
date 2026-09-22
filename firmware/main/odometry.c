@@ -1,20 +1,7 @@
-/*
- * odometry.c - Tarefa Odometria e IMU (Tabela 6, 20 ms).
- *
- * Porte corrigido de calculate_esp.cpp do projeto anterior (PCS3848), que
- * implementava as mesmas equacoes (1) a (5) da secao 4.5. Tres defeitos do
- * original foram corrigidos aqui:
- *
- *   1. delta_theta usava /(2*b) em vez de /b, subestimando a rotacao pela
- *      metade. A equacao (2) do documento e Dtheta = (Ds_R - Ds_L)/b.
- *   2. Pulsos por volta estavam embutidos como M_PI/15 na ESP e np.pi/20 no
- *      cliente Python. Agora e ENCODER_PULSES_PER_REV, um valor so.
- *   3. Graus e radianos se misturavam. Aqui tudo e radiano; a conversao, se
- *      houver, acontece na borda.
- *
- * Alem disso, os pulsos sao contados por interrupcao (RF05) e nao por
- * amostragem de digitalRead no laco principal, que perdia bordas.
- */
+/* Tarefa Odometria e IMU. Porte de calculate_esp.cpp do PCS3848 com tres
+ * correcoes: dtheta usava /(2*b) em vez de /b, os pulsos por volta estavam
+ * embutidos em dois lugares com valores diferentes, e graus se misturavam com
+ * radianos. Aqui tudo e radiano e os pulsos vem por interrupcao (RF05). */
 #include <math.h>
 
 #include "driver/gpio.h"
@@ -58,8 +45,7 @@ static float wrap_pi(float angle)
     return angle;
 }
 
-/* Nucleo cinematico, sem estado global e sem dependencia de hardware, para
- * poder ser conferido contra a simulacao Python fora da placa. */
+/* Nucleo cinematico, sem estado global nem hardware: testavel no host. */
 typedef struct {
     float x_m;
     float y_m;
@@ -68,24 +54,21 @@ typedef struct {
     float ds_m;        /* deslocamento do ultimo passo, saida */
 } odom_pose_t;
 
-/* Nao e static: os testes de host em firmware/test a exercitam diretamente. */
 void odom_step(odom_pose_t *p, float ds_left, float ds_right,
                float gyro_z_rad_s, float dt, bool imu_valid);
 
 void odom_step(odom_pose_t *p, float ds_left, float ds_right,
                float gyro_z_rad_s, float dt, bool imu_valid)
 {
-    /* Equacao (2). O projeto anterior dividia por (2*b) aqui e subestimava a
-     * rotacao pela metade; o documento define Dtheta = (Ds_R - Ds_L)/b. */
+    /* Equacao (2). O PCS3848 dividia por (2*b) e subestimava a rotacao pela metade. */
     float ds     = (ds_right + ds_left) / 2.0f;
     float dtheta = (ds_right - ds_left) / WHEEL_BASE_M;
 
     /* Equacao (3), so por encoder, mantido separado. */
     float yaw_odom = wrap_pi(p->yaw_odom_rad + dtheta);
 
-    /* Equacao (6), filtro complementar, escrito de forma segura na passagem
-     * por +-pi: em vez de misturar dois angulos absolutos, corrige a predicao
-     * do giroscopio pelo erro angular envolvido. */
+    /* Equacao (6). Corrige a predicao do giroscopio pelo erro angular envolvido,
+     * em vez de misturar dois angulos absolutos - seguro na passagem por +-pi. */
     float yaw_prev = p->yaw_rad;
     float yaw_fused;
 
@@ -97,8 +80,7 @@ void odom_step(odom_pose_t *p, float ds_left, float ds_right,
         yaw_fused = yaw_odom;
     }
 
-    /* Equacoes (4) e (5): projeta Ds no ponto medio do arco, usando o yaw
-     * fundido, conforme a secao 4.5. */
+    /* Equacoes (4) e (5): Ds projetado no ponto medio do arco, com yaw fundido. */
     float heading_mid = yaw_prev + wrap_pi(yaw_fused - yaw_prev) / 2.0f;
 
     p->x_m         += ds * cosf(heading_mid);

@@ -1,14 +1,6 @@
-/*
- * bt_command.c - Tarefa Bluetooth (Tabela 6, por evento).
- *
- * Recebe o canal Bluetooth Classic SPP, recompoe os pacotes binarios de dois
- * bytes da Tabela 7 e mantem o temporizador de timeout do RNF03.
- *
- * O callback do bluedroid so empilha bytes numa fila; quem valida e a tarefa
- * abaixo. Isso mantem o parser fora da pilha de Bluetooth e torna a recepcao
- * fragmentada trivial de tratar - o fluxo SPP nao preserva fronteira de
- * pacote, entao a maquina de estados de dois bytes atravessa chamadas.
- */
+/* Tarefa Bluetooth: SPP, parser dos pacotes de dois bytes da Tabela 7 e
+ * temporizador de timeout do RNF03. O callback do bluedroid so empilha bytes
+ * numa fila; a validacao fica nesta tarefa. */
 #include <string.h>
 
 #include "esp_bt.h"
@@ -35,10 +27,6 @@ static const char *TAG = "bt_command";
 
 static QueueHandle_t      s_rx_queue;
 static esp_timer_handle_t s_timeout_timer;
-
-/* ------------------------------------------------------------------------
- * Referencias de velocidade
- * --------------------------------------------------------------------- */
 
 static void zero_references(const char *motivo)
 {
@@ -72,17 +60,16 @@ static void renew_timeout(void)
     esp_timer_start_once(s_timeout_timer, (uint64_t)COMMAND_TIMEOUT_MS * 1000);
 }
 
-/* ------------------------------------------------------------------------
- * Parser
- * --------------------------------------------------------------------- */
-
 static void apply_packet(uint8_t id, int8_t value)
 {
     carrinho_state_t *st = state_lock();
 
+    float v_antes = st->cmd.v_ref_mps;
+    float w_antes = st->cmd.w_ref_rad_s;
+
     switch (id) {
     case CMD_PARADA:
-        /* Byte 2 ignorado. Zera ambas as referencias e pede parada. */
+        /* Byte 2 ignorado. */
         st->cmd.v_ref_mps   = 0.0f;
         st->cmd.w_ref_rad_s = 0.0f;
         break;
@@ -102,7 +89,17 @@ static void apply_packet(uint8_t id, int8_t value)
 
     st->cmd.last_packet_us    = esp_timer_get_time();
     st->safety.timeout_active = false;
+
+    /* O cliente repete os comandos a 10 Hz; loga so quando a referencia muda. */
+    bool mudou = (st->cmd.v_ref_mps != v_antes) || (st->cmd.w_ref_rad_s != w_antes);
+    float v_agora = st->cmd.v_ref_mps;
+    float w_agora = st->cmd.w_ref_rad_s;
     state_unlock();
+
+    if (mudou) {
+        ESP_LOGI(TAG, "pacote %02x %+4d  ->  v=%+.3f m/s  w=%+.3f rad/s",
+                 id, value, v_agora, w_agora);
+    }
 
     renew_timeout();
 
@@ -120,8 +117,7 @@ static void feed_byte(uint8_t byte)
 
     if (!have_id) {
         if (byte != CMD_PARADA && byte != CMD_LINEAR && byte != CMD_ROTACAO) {
-            /* Identificador desconhecido: descarta e ressincroniza sem
-             * renovar o timeout. */
+            /* Descarta e ressincroniza, sem renovar o timeout. */
             ESP_LOGW(TAG, "identificador invalido 0x%02x descartado", byte);
             return;
         }
@@ -140,10 +136,6 @@ static void feed_byte(uint8_t byte)
 
     apply_packet(pending_id, value);
 }
-
-/* ------------------------------------------------------------------------
- * Callbacks do bluedroid
- * --------------------------------------------------------------------- */
 
 static void spp_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 {
@@ -209,10 +201,6 @@ static void gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *par
     }
 }
 
-/* ------------------------------------------------------------------------
- * Tarefa
- * --------------------------------------------------------------------- */
-
 static void bt_command_task(void *arg)
 {
     (void)arg;
@@ -235,8 +223,7 @@ void bt_command_start(void)
     };
     ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_timeout_timer));
 
-    /* Sem BLE: o projeto usa apenas Bluetooth Classic, e a memoria liberada
-     * faz falta para a coexistencia com Wi-Fi. */
+    /* Sem BLE: a memoria liberada faz falta para a coexistencia com Wi-Fi. */
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_BLE));
 
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();

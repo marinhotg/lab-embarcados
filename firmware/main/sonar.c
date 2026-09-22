@@ -1,19 +1,6 @@
-/*
- * sonar.c - Tarefa Sonar (Tabela 6, 100 ms).
- *
- * Dispara um HC-SR04 por ativacao, alternando frente, tras, esquerda e
- * direita; a varredura completa leva 400 ms e nunca ha disparos simultaneos
- * (RF04). O eco e medido por interrupcao de borda com esp_timer, nao por
- * espera ocupada - a tarefa fica bloqueada num semaforo enquanto o pulso
- * viaja.
- *
- * Duas saidas por sensor, de proposito:
- *   dist_m  mediana das ultimas tres leituras validas, usada na telemetria
- *   raw_m   ultima leitura bruta valida, usada pela frenagem automatica
- *
- * A secao 3.2 do documento pede exatamente essa separacao: a seguranca nao
- * pode esperar a mediana se ha um obstaculo a 30 cm.
- */
+/* Tarefa Sonar: dispara um HC-SR04 por ativacao, varredura completa em 400 ms.
+ * Publica dois valores por sensor - a mediana vai na telemetria, o valor bruto
+ * vai na frenagem, que nao pode esperar tres leituras (secao 3.2). */
 #include <string.h>
 
 #include "driver/gpio.h"
@@ -39,7 +26,6 @@ static volatile int64_t s_rise_us[SONAR_COUNT];
 static volatile int64_t s_fall_us[SONAR_COUNT];
 static SemaphoreHandle_t s_echo_done[SONAR_COUNT];
 
-/* Janela da mediana, por sensor. */
 static float s_window[SONAR_COUNT][SONAR_MEDIAN_WINDOW];
 static int   s_window_len[SONAR_COUNT];
 static int   s_window_pos[SONAR_COUNT];
@@ -91,8 +77,7 @@ static void push_sample(int idx, float dist_m)
     }
 }
 
-/* Dispara um sensor e devolve a distancia em metros, ou -1 se nao houve eco
- * valido. */
+/* Devolve a distancia em metros, ou -1 se nao houve eco valido. */
 static float measure(int idx)
 {
     xSemaphoreTake(s_echo_done[idx], 0);   /* limpa eco antigo */
@@ -101,7 +86,6 @@ static float measure(int idx)
 
     gpio_intr_enable(s_echo_pins[idx]);
 
-    /* Pulso de trigger de 10 us. */
     gpio_set_level(s_trigger_pins[idx], 1);
     esp_rom_delay_us(10);
     gpio_set_level(s_trigger_pins[idx], 0);
@@ -149,8 +133,7 @@ static void sonar_task(void *arg)
             st->sonar[idx].valid    = true;
             state_unlock();
         } else {
-            /* Leitura rejeitada: mantem a ultima valida e deixa a idade
-             * crescer. E a idade que o cliente e a seguranca consultam. */
+            /* Mantem a ultima valida e deixa a idade crescer. */
             ESP_LOGD(TAG, "%s sem eco valido", s_names[idx]);
         }
 

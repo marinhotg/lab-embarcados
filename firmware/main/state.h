@@ -1,18 +1,7 @@
-/*
- * state.h - Estado compartilhado entre as tarefas.
- *
- * Regra de escrita (um dono por campo, verificavel por inspecao):
- *
- *   bt_command  escreve  cmd
- *   sonar       escreve  sonar[]
- *   odometry    escreve  pose, wheel, imu
- *   control     escreve  drive, safety   <- unico escritor da ponte H
- *   telemetry   nao escreve nada
- *
- * Leitura sempre por state_snapshot(), que copia tudo sob mutex e devolve.
- * Nenhuma tarefa pode segurar o mutex durante operacao de rede ou espera de
- * eco - e isso que garante o RNF07.
- */
+/* Estado compartilhado. Um dono por campo: bt_command escreve cmd, sonar
+ * escreve sonar[], odometry escreve pose/wheel/imu, control escreve drive e
+ * safety e e o unico a tocar a ponte H. Telemetry so le. Ninguem segura o
+ * mutex durante rede ou espera de eco - e isso que garante o RNF07. */
 #ifndef STATE_H
 #define STATE_H
 

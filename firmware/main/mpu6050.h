@@ -1,10 +1,4 @@
-/*
- * mpu6050.h - Driver minimo da IMU MPU6050 por I2C.
- *
- * Le apenas o que a odometria precisa: aceleracao nos tres eixos e velocidade
- * angular nos tres eixos. Temperatura, FIFO, DMP e interrupcoes do sensor
- * ficam de fora de proposito.
- */
+/* Driver minimo do MPU6050: so aceleracao e velocidade angular. */
 #ifndef MPU6050_H
 #define MPU6050_H
 

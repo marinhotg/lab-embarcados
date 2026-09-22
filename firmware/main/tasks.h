@@ -1,6 +1,4 @@
-/*
- * tasks.h - Pontos de entrada dos cinco blocos de firmware (Tabela 6).
- */
+/* Pontos de entrada dos cinco blocos (Tabela 6). */
 #ifndef TASKS_H
 #define TASKS_H
 

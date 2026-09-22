@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """Cliente de mapeamento 2D (RF12).
 
-Assina o topico unico de telemetria, reconstroi a trajetoria e projeta as
-leituras dos quatro ultrassonicos no plano.
-
-Porte de Semana3/mqtt/scripts/calculate.py do projeto anterior, que fazia o
-mesmo com rclpy e dois sensores. Mudou o transporte (ROS 2 -> MQTT + JSON),
-o numero de sensores (2 -> 4, com offset e orientacao proprios) e, sobretudo,
-a forma de ancorar a leitura no tempo: em vez de usar a pose corrente, cada
-distancia e projetada sobre a pose que o carrinho tinha quando a medicao
-aconteceu, obtida do historico por interpolacao a partir de sensores_idade_ms.
-A odometria em si foi para o firmware; aqui so se desenha.
+Cada distancia e projetada sobre a pose que o carrinho tinha quando a medicao
+aconteceu, obtida do historico por interpolacao a partir de sensores_idade_ms -
+nao sobre a pose corrente.
 """
 
 from __future__ import annotations
@@ -24,9 +17,7 @@ import threading
 import matplotlib.pyplot as plt
 import paho.mqtt.client as mqtt
 
-# Geometria dos sensores no referencial do carrinho, espelhando as constantes
-# de firmware/main/config.h. x aponta para a frente, y para a esquerda, angulo
-# positivo anti-horario.  CALIBRAR junto com o firmware na Aula 12.
+# Espelha SONAR_OFFSET_* de firmware/main/config.h. Calibrar junto.
 SENSORES = {
     "frente":   {"offset": (0.10, 0.00), "bearing": 0.0},
     "tras":     {"offset": (-0.10, 0.00), "bearing": math.pi},
@@ -46,8 +37,7 @@ class MapaCarrinho:
     def __init__(self) -> None:
         self._lock = threading.Lock()
 
-        # Historico de pose: listas paralelas, ordenadas por tempo, para
-        # permitir busca binaria na interpolacao.
+        # Listas paralelas ordenadas por tempo, para busca binaria.
         self._t_ms: list[int] = []
         self._poses: list[tuple[float, float, float]] = []
 
@@ -80,8 +70,7 @@ class MapaCarrinho:
         if ts is None or pose is None:
             return
 
-        # timestamp_ms conta desde a inicializacao do carrinho. Se ele andou
-        # para tras, houve reinicializacao: comeca uma sessao nova (secao 4.6).
+        # timestamp_ms anda para tras => carrinho reinicializou (secao 4.6).
         if ts < self._ultimo_ts:
             print("carrinho reinicializado, limpando o mapa")
             self._reset()
@@ -117,14 +106,12 @@ class MapaCarrinho:
             dist = distancias.get(nome)
             idade = idades.get(nome)
 
-            # Dado invalido chega como null; sem idade nao da para ancorar.
             if dist is None or idade is None:
                 continue
 
             t_medicao = ts - idade
 
-            # A mesma leitura reaparece em varias amostras: o sonar atualiza a
-            # cada 400 ms e a telemetria publica a cada 200 ms.
+            # O sonar atualiza a cada 400 ms e a telemetria publica a cada 200.
             chave = (nome, t_medicao)
             if chave in self._vistos:
                 continue
@@ -137,12 +124,10 @@ class MapaCarrinho:
             px, py, yaw = pose
             ox, oy = geometria["offset"]
 
-            # Posicao do sensor no mundo: offset rotacionado pelo yaw.
             cos_y, sin_y = math.cos(yaw), math.sin(yaw)
             sx = px + ox * cos_y - oy * sin_y
             sy = py + ox * sin_y + oy * cos_y
 
-            # Ponto detectado, na direcao para onde o sensor aponta.
             direcao = yaw + geometria["bearing"]
             self._obstaculos[nome].append(
                 (sx + dist * math.cos(direcao), sy + dist * math.sin(direcao))
@@ -170,8 +155,7 @@ class MapaCarrinho:
         x = p0[0] + f * (p1[0] - p0[0])
         y = p0[1] + f * (p1[1] - p0[1])
 
-        # Interpolacao angular pelo menor arco, para nao girar 350 graus na
-        # passagem por +-pi.
+        # Menor arco, para nao girar 350 graus na passagem por +-pi.
         delta = math.atan2(math.sin(p1[2] - p0[2]), math.cos(p1[2] - p0[2]))
         yaw = p0[2] + f * delta
 

@@ -1,10 +1,5 @@
-/*
- * main.c - Inicializacao do carrinho.
- *
- * Cria as cinco tarefas da Tabela 6. A ordem importa: o controle entra antes
- * de tudo para deixar a ponte H em estado neutro (RF10), e so depois sobem os
- * sensores, o comando e a rede.
- */
+/* Inicializacao. control_start() vem primeiro para deixar a ponte H neutra
+ * antes de qualquer outra coisa subir (RF10). */
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"

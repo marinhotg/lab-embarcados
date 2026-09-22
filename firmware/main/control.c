@@ -1,16 +1,7 @@
-/*
- * control.c - Tarefa Controle (Tabela 6, 50 ms e eventos).
- *
- * Unica tarefa que escreve na ponte H. Roda periodicamente a cada 50 ms e e
- * acordada fora do periodo por dois eventos que nao podem esperar: a parada
- * prioritaria do RF03 e o timeout de comando do RF08.
- *
- * Ordem das decisoes, do mais forte para o mais fraco:
- *   1. timeout de comando       -> zera v e omega
- *   2. leitura frontal invalida -> impede avanco, permite girar
- *   3. obstaculo a menos de 30 cm durante avanco -> impede avanco
- *   4. referencias do operador
- */
+/* Tarefa Controle, unica que escreve na ponte H. Roda a cada 50 ms e e acordada
+ * fora do periodo pela parada prioritaria (RF03) e pelo timeout (RF08).
+ * Precedencia: timeout zera tudo; leitura frontal invalida ou obstaculo abaixo
+ * de 30 cm impedem o avanco mas preservam a rotacao. */
 #include <math.h>
 
 #include "driver/gpio.h"
@@ -38,8 +29,7 @@ void control_notify(void)
     }
 }
 
-/* Aplica sentido e duty num canal da ponte H.
- * dir: -1 re, 0 parado, +1 avanco. duty normalizado em 0..1. */
+/* dir: -1 re, 0 parado, +1 avanco. duty normalizado em 0..1. */
 static void drive_channel(int pin_a, int pin_b, ledc_channel_t channel,
                           int dir, float duty)
 {
@@ -55,9 +45,7 @@ static void drive_channel(int pin_a, int pin_b, ledc_channel_t channel,
     ledc_update_duty(LEDC_LOW_SPEED_MODE, channel);
 }
 
-/* Converte velocidade de um lado em sentido e duty, respeitando a zona morta
- * do motor: abaixo de MOTOR_DUTY_MIN o motor apenas zumbe sem girar, entao a
- * faixa util e remapeada para [MIN, MAX]. */
+/* Remapeia para [MIN, MAX]: abaixo de MOTOR_DUTY_MIN o motor zumbe sem girar. */
 static void speed_to_drive(float v_mps, int *dir, float *duty)
 {
     float magnitude = fabsf(v_mps) / V_MAX_MPS;
@@ -101,8 +89,7 @@ static void control_task(void *arg)
             int64_t age_ms = (now_us - front->stamp_us) / 1000;
             front_stale = (age_ms > SONAR_MAX_AGE_MS);
 
-            /* Valor bruto, nao a mediana: a seguranca nao espera tres
-             * leituras (secao 3.2). */
+            /* Valor bruto, nao a mediana: a seguranca nao espera (secao 3.2). */
             if (!front_stale && front->raw_m < OBSTACLE_BRAKE_M) {
                 auto_brake = true;
             }
@@ -112,8 +99,7 @@ static void control_task(void *arg)
             v = 0.0f;
             w = 0.0f;
         } else if (v > 0.0f && (front_stale || auto_brake)) {
-            /* Impede avanco, mas preserva a rotacao: o operador ainda pode
-             * girar para sair de frente do obstaculo. */
+            /* Preserva a rotacao: da para girar e sair de frente do obstaculo. */
             v = 0.0f;
         }
 
@@ -121,8 +107,7 @@ static void control_task(void *arg)
         float v_left  = v - WHEEL_BASE_M * w / 2.0f;
         float v_right = v + WHEEL_BASE_M * w / 2.0f;
 
-        /* Se a combinacao estourar a faixa calibrada, reduz os dois lados na
-         * mesma proporcao - encolher so um deles distorceria a trajetoria. */
+        /* Reduz os dois lados na mesma proporcao; encolher so um distorceria a curva. */
         float peak = fmaxf(fabsf(v_left), fabsf(v_right));
         if (peak > V_MAX_MPS) {
             float scale = V_MAX_MPS / peak;
@@ -151,8 +136,7 @@ static void control_task(void *arg)
 
 void control_start(void)
 {
-    /* RF10: energiza com os atuadores neutros. Os pinos de sentido saem em
-     * nivel baixo e o duty comeca em zero, antes de qualquer comando. */
+    /* RF10: sentido em nivel baixo e duty zero, antes de qualquer comando. */
     gpio_config_t dir_cfg = {
         .pin_bit_mask = (1ULL << PIN_DIR_LEFT_A)  | (1ULL << PIN_DIR_LEFT_B) |
                         (1ULL << PIN_DIR_RIGHT_A) | (1ULL << PIN_DIR_RIGHT_B),

@@ -1,15 +1,6 @@
-/*
- * telemetry.c - Tarefa MQTT (Tabela 6, 200 ms).
- *
- * Wi-Fi em modo estacao, publicacao periodica de uma amostra JSON unica no
- * topico carrinho/{id}/telemetria, QoS 0 e sem retencao (secao 4.6).
- *
- * Nada aqui bloqueia o controle (RNF07): o esp-mqtt mantem sua propria tarefa
- * e reconecta sozinho, e a reconexao do Wi-Fi acontece no laco de eventos.
- * Esta tarefa so copia o estado, formata e entrega - se a rede estiver fora,
- * a publicacao falha e a amostra e descartada. Amostra velha nao interessa a
- * ninguem; o cliente quer a mais recente.
- */
+/* Tarefa MQTT: Wi-Fi em modo estacao e uma amostra JSON a cada 200 ms, QoS 0 sem
+ * retencao. Nada aqui bloqueia o controle - o esp-mqtt tem tarefa propria e
+ * reconecta sozinho. Se a rede cair a amostra e descartada, nao enfileirada. */
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
@@ -34,10 +25,6 @@ static const char *TAG = "telemetry";
 static esp_mqtt_client_handle_t s_mqtt;
 static bool s_mqtt_connected;
 static uint32_t s_seq;
-
-/* ------------------------------------------------------------------------
- * Wi-Fi
- * --------------------------------------------------------------------- */
 
 static void wifi_event_handler(void *arg, esp_event_base_t base,
                                int32_t id, void *data)
@@ -84,10 +71,6 @@ static void wifi_start(void)
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
-/* ------------------------------------------------------------------------
- * MQTT
- * --------------------------------------------------------------------- */
-
 static void mqtt_event_handler(void *arg, esp_event_base_t base,
                                int32_t id, void *data)
 {
@@ -121,13 +104,8 @@ static void mqtt_start(void)
     ESP_ERROR_CHECK(esp_mqtt_client_start(s_mqtt));
 }
 
-/* ------------------------------------------------------------------------
- * Serializacao
- * --------------------------------------------------------------------- */
-
-/* Todo acrescimo passa por aqui. snprintf devolve o tamanho que o texto teria
- * sem truncamento, entao pos pode ultrapassar o buffer; a guarda impede que
- * size - pos estoure por baixo, e build_payload confere o total no fim. */
+/* snprintf devolve o tamanho sem truncamento, entao pos pode passar do buffer;
+ * a guarda impede que size - pos estoure por baixo. */
 #define APPEND(...)                                                  \
     do {                                                             \
         if (pos < (int)size) {                                       \
@@ -220,10 +198,6 @@ static int build_payload(char *buf, size_t size, const carrinho_state_t *s)
 
     return pos;
 }
-
-/* ------------------------------------------------------------------------
- * Tarefa
- * --------------------------------------------------------------------- */
 
 static void telemetry_task(void *arg)
 {

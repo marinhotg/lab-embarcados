@@ -61,7 +61,7 @@ esp_err_t mpu6050_init(void)
         .device_address  = MPU6050_ADDR,
         .scl_speed_hz    = I2C_FREQ_HZ,
     };
-    ESP_RETURN_ON_ERROR(i2c_master_bus_add_device(&s_bus, &dev_cfg, &s_dev), TAG, "dev");
+    ESP_RETURN_ON_ERROR(i2c_master_bus_add_device(s_bus, &dev_cfg, &s_dev), TAG, "dev");
 
     uint8_t who = 0;
     ESP_RETURN_ON_ERROR(read_regs(REG_WHO_AM_I, &who, 1), TAG, "who_am_i");
@@ -70,13 +70,11 @@ esp_err_t mpu6050_init(void)
         return ESP_ERR_NOT_FOUND;
     }
 
-    /* Acorda o sensor e usa o eixo X do giroscopio como fonte de clock, que e
-     * mais estavel que o oscilador interno. */
+    /* Clock no eixo X do giroscopio: mais estavel que o oscilador interno. */
     ESP_RETURN_ON_ERROR(write_reg(REG_PWR_MGMT_1, 0x01), TAG, "wake");
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    /* DLPF em 44 Hz: filtra a vibracao dos quatro motores sem atrasar demais
-     * a leitura de 20 ms da tarefa de odometria. */
+    /* DLPF em 44 Hz: corta a vibracao dos motores sem atrasar a leitura de 20 ms. */
     ESP_RETURN_ON_ERROR(write_reg(REG_CONFIG, 0x03), TAG, "dlpf");
     ESP_RETURN_ON_ERROR(write_reg(REG_SMPLRT_DIV, 0x04), TAG, "rate");   /* 200 Hz */
     ESP_RETURN_ON_ERROR(write_reg(REG_GYRO_CONFIG, 0x00), TAG, "gyro_fs");
@@ -139,10 +137,8 @@ esp_err_t mpu6050_read(float accel_m_s2[3], float gyro_rad_s[3])
         return err;
     }
 
-    /* Eixos do sensor -> eixos do carrinho (x frente, y esquerda, z cima).
-     * O mapeamento identidade abaixo assume a IMU deitada e alinhada com o
-     * chassi. Se a fixacao ficar girada, corrigir aqui e so aqui - e a
-     * "calibracao geometrica" prevista na secao 2.3. */
+    /* Identidade assume a IMU deitada e alinhada com o chassi. Se a fixacao
+     * ficar girada, corrigir aqui e so aqui (calibracao geometrica, secao 2.3). */
     for (int a = 0; a < 3; a++) {
         accel_m_s2[a] = raw_accel[a] / ACCEL_LSB_PER_G * GRAVITY_M_S2;
         gyro_rad_s[a] = raw_gyro[a] / GYRO_LSB_PER_DEG_S * (float)M_PI / 180.0f
