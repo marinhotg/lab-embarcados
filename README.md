@@ -1,7 +1,7 @@
 # Carrinho de Controle Remoto com Sensoriamento e Mapeamento 2D
 
 PCS3858 — Laboratório de Sistemas Embarcados, Turma 1. Firmware ESP-IDF para
-ESP32.
+ESP32 e cliente Bluetooth em Python.
 
 ## Organização
 
@@ -19,6 +19,8 @@ firmware/          projeto ESP-IDF
     control.c      controle    — segurança e ponte H (único escritor)
     telemetry.c    telemetria  — Wi-Fi, esp-mqtt, JSON
   test/            ensaios de host, sem placa
+client/
+  bt_control.py    controle Bluetooth por teclado e ensaios de bancada
 ```
 
 ## Requisitos
@@ -40,6 +42,16 @@ idf.py build flash monitor
 `sdkconfig.defaults` já traz o que o projeto precisa: partição grande (Bluetooth
 Classic e Wi-Fi juntos não cabem no padrão de 1 MB), coexistência de rádio
 ligada e tick do FreeRTOS em 1 ms.
+
+## Controle Bluetooth
+
+```sh
+python client/bt_control.py              # teclado: w/s avança e ré, a/d gira
+python client/bt_control.py --motor-test # confere a fiação da ponte H
+```
+
+O cabeçalho de `bt_control.py` lista os outros modos (`--hex`,
+`--timeout-test`, `--ramp`, `--power-test`) e como parear com `bluetoothctl`.
 
 ## Ensaios de host
 

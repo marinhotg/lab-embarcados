@@ -11,6 +11,11 @@ firmware/main/secrets.h
 # Backup of the previous project (PCS3848)
 _backup_pcs3848.tar.gz
 
+# Python
+client/__pycache__/
+client/.venv/
+*.pyc
+
 # Specification PDF, distributed outside the repository
 docs/*.pdf
 
