@@ -1,0 +1,23 @@
+# ESP-IDF
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/dependencies.lock
+
+# Credenciais - nunca versionar (RNF08)
+firmware/main/secrets.h
+
+# Backup do projeto anterior (PCS3848)
+_backup_pcs3848.tar.gz
+
+# Python
+client/__pycache__/
+client/.venv/
+*.pyc
+
+# Especificacao em PDF, distribuida fora do repositorio
+docs/
+
+# Projeto anterior (PCS3848), mantido em disco so para consulta
+referencia/
