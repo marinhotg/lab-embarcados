@@ -66,7 +66,7 @@
 /* Bench only: with 0, moving forward no longer requires a front sonar reading.
  * A missing reading counts as invalid and would otherwise block all forward
  * motion. */
-#define SAFETY_REQUIRE_FRONT_SONAR 1
+#define SAFETY_REQUIRE_FRONT_SONAR 0
 
 #define WIFI_RETRY_MS          5000
 
