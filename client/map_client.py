@@ -280,19 +280,26 @@ def _status_text(sample: dict) -> str:
     return "\n".join(lines)
 
 
-def run(broker, port, rover_id, duration=None, save=None) -> None:
+def run(broker, port, rover_id, simulate=False, duration=None,
+        save=None, ground_truth=False, speed=1.0) -> None:
     occupancy = OccupancyMap()
     topic = f"rover/{rover_id}/telemetry"
+    client = generator = None
 
-    if save and duration is None:
+    if save and not simulate and duration is None:
         duration = 30.0
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-    client.on_message = occupancy.on_message
-    client.on_connect = lambda c, *_: (
-        print(f"connected to broker, subscribing to {topic}"), c.subscribe(topic))
-    client.connect(broker, port, keepalive=30)
-    client.loop_start()
+    if simulate:
+        import simulation
+        generator = simulation.generate(SONARS)
+        print("simulated mode: no broker, synthetic data")
+    else:
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        client.on_message = occupancy.on_message
+        client.on_connect = lambda c, *_: (
+            print(f"connected to broker, subscribing to {topic}"), c.subscribe(topic))
+        client.connect(broker, port, keepalive=30)
+        client.loop_start()
 
     if save:
         matplotlib.use("Agg")
@@ -324,6 +331,13 @@ def run(broker, port, rover_id, duration=None, save=None) -> None:
                            origin="lower", extent=(0, 1, 0, 1),
                            interpolation="nearest", zorder=1)
 
+    if ground_truth and simulate:
+        import simulation
+        for x0, y0, x1, y1 in simulation.OBSTACLES:
+            ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0,
+                                       facecolor="none", edgecolor="#00e5ff",
+                                       linestyle="--", linewidth=0.9, zorder=2))
+
     trajectory_line, = ax.plot([], [], "-", color="#2979ff", linewidth=1.4, zorder=4)
     ray_lines = {n: ax.plot([], [], "-", color=COLORS[n], linewidth=1.1,
                             alpha=0.8, zorder=5)[0] for n in SONARS}
@@ -336,8 +350,24 @@ def run(broker, port, rover_id, duration=None, save=None) -> None:
                         transform=panel.transAxes)
 
     start = time.monotonic()
+    pending = None
     try:
         while save or plt.fignum_exists(fig.number):
+            # Release each simulated sample only when the clock reaches its
+            # timestamp, so the simulation runs at the rover's pace. No reason
+            # to wait when rendering to a file.
+            if generator is not None:
+                if pending is None:
+                    try:
+                        pending = next(generator)
+                    except StopIteration:
+                        generator = None
+                if pending is not None:
+                    due = pending["timestamp_ms"] / 1000.0 / speed
+                    if save or time.monotonic() - start >= due:
+                        occupancy.ingest(pending)
+                        pending = None
+
             if duration and time.monotonic() - start > duration:
                 break
 
@@ -363,7 +393,10 @@ def run(broker, port, rover_id, duration=None, save=None) -> None:
             status.set_text(_status_text(data["sample"]))
 
             if save:
-                time.sleep(0.1)
+                if generator is None and duration is None:
+                    break
+                if generator is None:
+                    time.sleep(0.1)
             else:
                 fig.canvas.draw_idle()
                 plt.pause(0.03)
@@ -374,8 +407,9 @@ def run(broker, port, rover_id, duration=None, save=None) -> None:
             fig.savefig(save, dpi=110, facecolor=fig.get_facecolor(),
                         bbox_inches="tight")
             print(f"map saved to {save}")
-        client.loop_stop()
-        client.disconnect()
+        if client is not None:
+            client.loop_stop()
+            client.disconnect()
 
 
 def main() -> None:
@@ -383,11 +417,17 @@ def main() -> None:
     p.add_argument("--broker", default="localhost")
     p.add_argument("--port", type=int, default=1883)
     p.add_argument("--id", dest="rover_id", default="01")
+    p.add_argument("--simulate", action="store_true", help="synthetic data, no broker")
     p.add_argument("--duration", type=float, help="seconds until exit")
     p.add_argument("--save", help="render the map to a PNG and exit")
+    p.add_argument("--ground-truth", action="store_true",
+                   help="outline the real obstacles (only with --simulate)")
+    p.add_argument("--speed", type=float, default=1.0,
+                   help="simulation pace multiplier (1 = real time)")
     args = p.parse_args()
 
-    run(args.broker, args.port, args.rover_id, args.duration, args.save)
+    run(args.broker, args.port, args.rover_id, args.simulate,
+        args.duration, args.save, args.ground_truth, args.speed)
 
 
 if __name__ == "__main__":

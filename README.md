@@ -22,6 +22,7 @@ firmware/          projeto ESP-IDF
 client/
   bt_control.py    controle Bluetooth por teclado e ensaios de bancada
   map_client.py    mapa 2D em tempo real (paho-mqtt + matplotlib)
+  simulation.py    telemetria sintética para o mapa sem hardware
 ```
 
 ## Requisitos
@@ -61,7 +62,9 @@ pip install -r client/requirements.txt
 python client/map_client.py --broker 192.168.0.100 --id 01
 ```
 
-`--save mapa.png` grava a imagem em vez de abrir a janela.
+Sem hardware, `--simulate` gera telemetria de uma sala com uma caixa no meio;
+`--ground-truth` contorna os obstáculos reais e `--save mapa.png` grava a
+imagem em vez de abrir a janela.
 
 ## Ensaios de host
 
