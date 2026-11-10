@@ -21,3 +21,11 @@ docs/*.pdf
 
 # Previous project (PCS3848), kept on disk for reference only
 referencia/
+
+# Android app
+android/.gradle/
+android/.idea/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
