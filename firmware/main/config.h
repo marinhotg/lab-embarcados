@@ -63,16 +63,9 @@
 #define PERIOD_CONTROL_MS      50
 #define PERIOD_TELEMETRY_MS    200
 
-/* Bench only: with 0, moving forward no longer requires a front sonar reading.
- * A missing reading counts as invalid and would otherwise block all forward
- * motion. */
-#define SAFETY_REQUIRE_FRONT_SONAR 1
-
 #define WIFI_RETRY_MS          5000
 
 #define COMMAND_TIMEOUT_MS     450   /* the spec requires a stop within 500 ms */
-#define OBSTACLE_BRAKE_M       0.30f
-#define SONAR_MAX_AGE_MS       500
 
 #define SONAR_ECHO_TIMEOUT_MS  30    /* ~5 m */
 #define SONAR_MIN_VALID_M      0.02f

@@ -108,7 +108,7 @@ Tópico `rover/{id}/telemetry`, QoS 0, sem retenção, a cada 200 ms.
     "gyro_rad_s": {"x": 0.00, "y": 0.00, "z": 0.16},
     "age_ms": 0, "yaw_fused_rad": 0.31, "yaw_odom_rad": 0.29, "valid": true
   },
-  "safety": {"timeout_active": false, "auto_brake": false, "front_invalid": false}
+  "safety": {"timeout_active": false}
 }
 ```
 
