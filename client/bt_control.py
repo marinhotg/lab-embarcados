@@ -103,13 +103,13 @@ def motor_test(sock: socket.socket) -> None:
     """Four maneuvers that tell apart every H-bridge wiring mistake."""
     steps = [
         (0, 0, 1.0, "stopped"),
-        (40, 0, 2.5, "FORWARD     - both wheels forward"),
+        (40, 0, 5.0, "FORWARD     - both wheels forward"),
         (0, 0, 1.0, "stopped"),
-        (-40, 0, 2.5, "REVERSE     - both wheels backward"),
+        (-40, 0, 5.0, "REVERSE     - both wheels backward"),
         (0, 0, 1.0, "stopped"),
-        (0, 60, 2.5, "TURN LEFT   - left backward, right forward"),
+        (0, 60, 5.0, "TURN LEFT   - left backward, right forward"),
         (0, 0, 1.0, "stopped"),
-        (0, -60, 2.5, "TURN RIGHT  - left forward, right backward"),
+        (0, -60, 5.0, "TURN RIGHT  - left forward, right backward"),
         (0, 0, 1.0, "stopped"),
     ]
     for v, w, duration, label in steps:
