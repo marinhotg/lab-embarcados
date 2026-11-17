@@ -94,8 +94,10 @@ static void control_task(void *arg)
         speed_to_drive(v_left,  &dir_left,  &duty_left);
         speed_to_drive(v_right, &dir_right, &duty_right);
 
-        drive_channel(PIN_DIR_LEFT_A,  PIN_DIR_LEFT_B,  CH_LEFT,  dir_left,  duty_left);
-        drive_channel(PIN_DIR_RIGHT_A, PIN_DIR_RIGHT_B, CH_RIGHT, dir_right, duty_right);
+        drive_channel(PIN_DIR_LEFT_A,  PIN_DIR_LEFT_B,  CH_LEFT,
+                      dir_left * MOTOR_LEFT_POLARITY,  duty_left);
+        drive_channel(PIN_DIR_RIGHT_A, PIN_DIR_RIGHT_B, CH_RIGHT,
+                      dir_right * MOTOR_RIGHT_POLARITY, duty_right);
 
         rover_state_t *st = state_lock();
         st->drive.dir_left      = dir_left;

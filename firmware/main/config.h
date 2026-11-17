@@ -50,6 +50,11 @@
 #define MOTOR_DUTY_MIN         0.30f     /* below this the motor stalls */
 #define MOTOR_DUTY_MAX         1.00f
 
+/* -1 flips a side at the H-bridge only; odometry keeps the logical sign.
+ * Same effect as swapping that side's motor wires on its screw terminal. */
+#define MOTOR_LEFT_POLARITY    (-1)
+#define MOTOR_RIGHT_POLARITY   (-1)
+
 /* Filter time constant is dt*alpha/(1-alpha) and must span a whole turn to
  * reject wheel slip: 0.98 leaves a 14.7 deg error. See firmware/test. */
 #define COMPLEMENTARY_ALPHA    0.995f
