@@ -63,7 +63,11 @@
 #define PERIOD_CONTROL_MS      50
 #define PERIOD_TELEMETRY_MS    200
 
-#define WIFI_RETRY_MS          5000
+/* The rover's own network; its password lives in secrets.h. */
+#define WIFI_AP_SSID           "Rover-" ROVER_ID
+#define WIFI_AP_CHANNEL        6
+#define WIFI_AP_MAX_CLIENTS    3
+#define MQTT_BROKER_PORT       1883
 
 #define COMMAND_TIMEOUT_MS     450   /* the spec requires a stop within 500 ms */
 
