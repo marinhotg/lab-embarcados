@@ -1,16 +1,19 @@
-/* Wi-Fi station plus one JSON sample per period, QoS 0, not retained. esp-mqtt
- * runs its own task and reconnects by itself; while offline samples are
- * dropped, not queued. */
+/* The rover is its own network: a Wi-Fi access point with a Mosquitto broker,
+ * so a phone or a laptop joins it and subscribes with no router or internet.
+ * The local esp-mqtt client publishes one JSON sample per period to that
+ * broker, QoS 0, not retained; while offline samples are dropped, not queued. */
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "mosq_broker.h"
 #include "mqtt_client.h"
 
 #include "config.h"
@@ -23,69 +26,71 @@ static const char *TAG = "telemetry";
 #define JSON_BUFFER_SIZE 1024
 
 static esp_mqtt_client_handle_t s_mqtt;
-static esp_timer_handle_t s_wifi_retry;
 static bool s_mqtt_connected;
 static uint32_t s_seq;
-
-static void wifi_retry(void *arg)
-{
-    (void)arg;
-    esp_wifi_connect();
-}
 
 static void wifi_event_handler(void *arg, esp_event_base_t base,
                                int32_t id, void *data)
 {
     (void)arg;
-    (void)data;
+    (void)base;
 
-    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
-    } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
-        /* Back off: an immediate retry fails at once and re-fires this event,
-         * flooding the log. */
-        static int64_t last_warning_us;
-        int64_t now_us = esp_timer_get_time();
-        if (now_us - last_warning_us > 10000000) {
-            ESP_LOGW(TAG, "Wi-Fi down, retrying every %d s",
-                     WIFI_RETRY_MS / 1000);
-            last_warning_us = now_us;
-        }
-        esp_timer_stop(s_wifi_retry);
-        esp_timer_start_once(s_wifi_retry, (uint64_t)WIFI_RETRY_MS * 1000);
-    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
-        ESP_LOGI(TAG, "Wi-Fi connected, IP " IPSTR, IP2STR(&event->ip_info.ip));
+    if (id == WIFI_EVENT_AP_STACONNECTED) {
+        wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *)data;
+        ESP_LOGI(TAG, "client joined " MACSTR, MAC2STR(event->mac));
+    } else if (id == WIFI_EVENT_AP_STADISCONNECTED) {
+        wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t *)data;
+        ESP_LOGI(TAG, "client left " MACSTR, MAC2STR(event->mac));
     }
 }
 
 static void wifi_start(void)
 {
-    const esp_timer_create_args_t args = { .callback = wifi_retry, .name = "wifi_retry" };
-    ESP_ERROR_CHECK(esp_timer_create(&args, &s_wifi_retry));
-
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+    esp_netif_create_default_wifi_ap();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, NULL, NULL));
 
-    wifi_config_t wifi_cfg = { 0 };
-    strlcpy((char *)wifi_cfg.sta.ssid, WIFI_SSID, sizeof(wifi_cfg.sta.ssid));
-    strlcpy((char *)wifi_cfg.sta.password, WIFI_PASSWORD, sizeof(wifi_cfg.sta.password));
+    wifi_config_t wifi_cfg = {
+        .ap = {
+            .channel        = WIFI_AP_CHANNEL,
+            .max_connection = WIFI_AP_MAX_CLIENTS,
+            .authmode       = WIFI_AUTH_WPA2_PSK,
+        },
+    };
+    strlcpy((char *)wifi_cfg.ap.ssid, WIFI_AP_SSID, sizeof(wifi_cfg.ap.ssid));
+    strlcpy((char *)wifi_cfg.ap.password, WIFI_AP_PASSWORD, sizeof(wifi_cfg.ap.password));
+    wifi_cfg.ap.ssid_len = strlen(WIFI_AP_SSID);
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_cfg));
 
     /* Modem sleep delays publishing and hurts Bluetooth coexistence. */
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "access point \"%s\" up, broker at 192.168.4.1:%d",
+             WIFI_AP_SSID, MQTT_BROKER_PORT);
+}
+
+/* mosq_broker_run() serves clients in the calling task and only returns on
+ * error. */
+static void broker_task(void *arg)
+{
+    (void)arg;
+
+    struct mosq_broker_config cfg = {
+        .host = "0.0.0.0",
+        .port = MQTT_BROKER_PORT,
+    };
+    int err = mosq_broker_run(&cfg);
+    ESP_LOGE(TAG, "broker stopped (%d)", err);
+    vTaskDelete(NULL);
 }
 
 static void mqtt_event_handler(void *arg, esp_event_base_t base,
@@ -111,8 +116,15 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base,
 
 static void mqtt_start(void)
 {
+    /* The broker task may not be listening yet; retry fast instead of
+     * waiting the default 10 s. */
     esp_mqtt_client_config_t cfg = {
-        .broker.address.uri = MQTT_BROKER_URI,
+        .broker.address = {
+            .transport = MQTT_TRANSPORT_OVER_TCP,
+            .hostname  = "127.0.0.1",
+            .port      = MQTT_BROKER_PORT,
+        },
+        .network.reconnect_timeout_ms = 1000,
     };
 
     s_mqtt = esp_mqtt_client_init(&cfg);
@@ -207,11 +219,8 @@ static int build_payload(char *buf, size_t size, const rover_state_t *s)
         s->pose.yaw_rad, s->pose.yaw_odom_rad, s->imu.valid ? "true" : "false");
 
     APPEND(
-        "\"safety\": {\"timeout_active\": %s, \"auto_brake\": %s, "
-        "\"front_invalid\": %s}}",
-        s->safety.timeout_active ? "true" : "false",
-        s->safety.auto_brake     ? "true" : "false",
-        s->safety.front_invalid  ? "true" : "false");
+        "\"safety\": {\"timeout_active\": %s}}",
+        s->safety.timeout_active ? "true" : "false");
 
     return pos;
 }
@@ -247,6 +256,7 @@ static void telemetry_task(void *arg)
 void telemetry_start(void)
 {
     wifi_start();
+    xTaskCreate(broker_task, "mqtt_broker", 6144, NULL, PRIO_TELEMETRY, NULL);
     mqtt_start();
 
     xTaskCreate(telemetry_task, "telemetry", 5120, NULL, PRIO_TELEMETRY, NULL);

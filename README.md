@@ -17,7 +17,7 @@ firmware/          projeto ESP-IDF
     odometry.c     odometria   — encoders por ISR, fusão com giroscópio
     mpu6050.[ch]   driver I2C da IMU
     control.c      controle    — segurança e ponte H (único escritor)
-    telemetry.c    telemetria  — Wi-Fi, esp-mqtt, JSON
+    telemetry.c    telemetria  — ponto de acesso Wi-Fi, broker, esp-mqtt, JSON
   test/            ensaios de host, sem placa
 client/
   bt_control.py    controle Bluetooth por teclado e ensaios de bancada
@@ -34,7 +34,7 @@ e `mpu6050.c` usa o driver `i2c_master`, ambos introduzidos nessa versão.
 
 ```sh
 cp firmware/main/secrets.h.example firmware/main/secrets.h
-$EDITOR firmware/main/secrets.h          # SSID, senha e URI do broker
+$EDITOR firmware/main/secrets.h          # senha da rede Wi-Fi do rover
 
 cd firmware
 idf.py set-target esp32
@@ -55,11 +55,18 @@ python client/bt_control.py --motor-test # confere a fiação da ponte H
 O cabeçalho de `bt_control.py` lista os outros modos (`--hex`,
 `--timeout-test`, `--ramp`, `--power-test`) e como parear com `bluetoothctl`.
 
+## Rede e telemetria
+
+O rover cria a própria rede Wi-Fi, `Rover-01` (WPA2, senha em `secrets.h`), e
+roda um broker Mosquitto em `192.168.4.1:1883`. Não precisa de roteador nem de
+internet: o celular ou o notebook entra nessa rede e assina
+`rover/01/telemetry`. Aceita até 3 clientes ao mesmo tempo.
+
 ## Cliente de mapa
 
 ```sh
 pip install -r client/requirements.txt
-python client/map_client.py --broker 192.168.0.100 --id 01
+python client/map_client.py --broker 192.168.4.1 --id 01
 ```
 
 Sem hardware, `--simulate` gera telemetria de uma sala com uma caixa no meio;
@@ -108,7 +115,7 @@ Tópico `rover/{id}/telemetry`, QoS 0, sem retenção, a cada 200 ms.
     "gyro_rad_s": {"x": 0.00, "y": 0.00, "z": 0.16},
     "age_ms": 0, "yaw_fused_rad": 0.31, "yaw_odom_rad": 0.29, "valid": true
   },
-  "safety": {"timeout_active": false, "auto_brake": false, "front_invalid": false}
+  "safety": {"timeout_active": false}
 }
 ```
 

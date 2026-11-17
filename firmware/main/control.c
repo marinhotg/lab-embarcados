@@ -1,13 +1,10 @@
-/* The only task that drives the H-bridge. Precedence: a command timeout zeroes
- * everything; an invalid front reading or an obstacle closer than
- * OBSTACLE_BRAKE_M blocks forward motion but keeps rotation, so the rover can
- * still turn away. */
+/* The only task that drives the H-bridge. A command timeout zeroes both
+ * references. */
 #include <math.h>
 
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -76,28 +73,9 @@ static void control_task(void *arg)
         float v = snap.cmd.v_ref_mps;
         float w = snap.cmd.w_ref_rad_s;
 
-        bool timeout      = snap.safety.timeout_active;
-        bool front_stale  = SAFETY_REQUIRE_FRONT_SONAR ? true : false;
-        bool auto_brake   = false;
-
-        int64_t now_us = esp_timer_get_time();
-        const sonar_state_t *front = &snap.sonar[SONAR_FRONT];
-
-        if (front->valid) {
-            int64_t age_ms = (now_us - front->stamp_us) / 1000;
-            front_stale = (age_ms > SONAR_MAX_AGE_MS);
-
-            /* Raw value, not the median: braking cannot wait for three readings. */
-            if (!front_stale && front->raw_m < OBSTACLE_BRAKE_M) {
-                auto_brake = true;
-            }
-        }
-
-        if (timeout) {
+        if (snap.safety.timeout_active) {
             v = 0.0f;
             w = 0.0f;
-        } else if (v > 0.0f && (front_stale || auto_brake)) {
-            v = 0.0f;
         }
 
         float v_left  = v - WHEEL_BASE_M * w / 2.0f;
@@ -116,16 +94,16 @@ static void control_task(void *arg)
         speed_to_drive(v_left,  &dir_left,  &duty_left);
         speed_to_drive(v_right, &dir_right, &duty_right);
 
-        drive_channel(PIN_DIR_LEFT_A,  PIN_DIR_LEFT_B,  CH_LEFT,  dir_left,  duty_left);
-        drive_channel(PIN_DIR_RIGHT_A, PIN_DIR_RIGHT_B, CH_RIGHT, dir_right, duty_right);
+        drive_channel(PIN_DIR_LEFT_A,  PIN_DIR_LEFT_B,  CH_LEFT,
+                      dir_left * MOTOR_LEFT_POLARITY,  duty_left);
+        drive_channel(PIN_DIR_RIGHT_A, PIN_DIR_RIGHT_B, CH_RIGHT,
+                      dir_right * MOTOR_RIGHT_POLARITY, duty_right);
 
         rover_state_t *st = state_lock();
         st->drive.dir_left      = dir_left;
         st->drive.dir_right     = dir_right;
         st->drive.duty_left     = duty_left;
         st->drive.duty_right    = duty_right;
-        st->safety.auto_brake   = auto_brake;
-        st->safety.front_invalid = front_stale;
         state_unlock();
     }
 }
@@ -171,9 +149,6 @@ void control_start(void)
         ESP_ERROR_CHECK(ledc_channel_config(&ch_cfg));
     }
 
-#if !SAFETY_REQUIRE_FRONT_SONAR
-    ESP_LOGW(TAG, "BENCH MODE: forward motion allowed without front sonar");
-#endif
     ESP_LOGI(TAG, "H-bridge neutral");
 
     xTaskCreate(control_task, "control", 4096, NULL, PRIO_CONTROL, &s_task);

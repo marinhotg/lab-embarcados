@@ -50,6 +50,11 @@
 #define MOTOR_DUTY_MIN         0.30f     /* below this the motor stalls */
 #define MOTOR_DUTY_MAX         1.00f
 
+/* -1 flips a side at the H-bridge only; odometry keeps the logical sign.
+ * Same effect as swapping that side's motor wires on its screw terminal. */
+#define MOTOR_LEFT_POLARITY    (-1)
+#define MOTOR_RIGHT_POLARITY   (-1)
+
 /* Filter time constant is dt*alpha/(1-alpha) and must span a whole turn to
  * reject wheel slip: 0.98 leaves a 14.7 deg error. See firmware/test. */
 #define COMPLEMENTARY_ALPHA    0.995f
@@ -63,16 +68,13 @@
 #define PERIOD_CONTROL_MS      50
 #define PERIOD_TELEMETRY_MS    200
 
-/* Bench only: with 0, moving forward no longer requires a front sonar reading.
- * A missing reading counts as invalid and would otherwise block all forward
- * motion. */
-#define SAFETY_REQUIRE_FRONT_SONAR 1
-
-#define WIFI_RETRY_MS          5000
+/* The rover's own network; its password lives in secrets.h. */
+#define WIFI_AP_SSID           "Rover-" ROVER_ID
+#define WIFI_AP_CHANNEL        6
+#define WIFI_AP_MAX_CLIENTS    3
+#define MQTT_BROKER_PORT       1883
 
 #define COMMAND_TIMEOUT_MS     450   /* the spec requires a stop within 500 ms */
-#define OBSTACLE_BRAKE_M       0.30f
-#define SONAR_MAX_AGE_MS       500
 
 #define SONAR_ECHO_TIMEOUT_MS  30    /* ~5 m */
 #define SONAR_MIN_VALID_M      0.02f

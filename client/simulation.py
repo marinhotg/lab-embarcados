@@ -141,11 +141,6 @@ def generate(sonars: dict, seed: int = 7):
                     "yaw_fused_rad": round(yaw, 4),
                     "yaw_odom_rad": round(yaw_odom, 4),
                     "age_ms": 0, "valid": True},
-            "safety": {
-                "timeout_active": False,
-                "auto_brake": bool(
-                    distances["front"] is not None
-                    and distances["front"] < 0.30 and v > 0),
-                "front_invalid": distances["front"] is None},
+            "safety": {"timeout_active": False},
         }
         seq += 1

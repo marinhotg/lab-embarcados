@@ -271,12 +271,8 @@ def _status_text(sample: dict) -> str:
     else:
         lines += ["", "IMU invalid"]
 
-    alerts = [label for label, key in (("timeout", "timeout_active"),
-                                       ("auto brake", "auto_brake"),
-                                       ("front invalid", "front_invalid"))
-              if safety.get(key)]
-    if alerts:
-        lines += ["", "ALERT: " + ", ".join(alerts)]
+    if safety.get("timeout_active"):
+        lines += ["", "ALERT: timeout"]
     return "\n".join(lines)
 
 
