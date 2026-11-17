@@ -53,8 +53,6 @@ typedef struct {
 
 typedef struct {
     bool timeout_active;
-    bool auto_brake;
-    bool front_invalid;       /* front reading missing or stale */
 } safety_state_t;
 
 typedef struct {

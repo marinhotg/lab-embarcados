@@ -207,11 +207,8 @@ static int build_payload(char *buf, size_t size, const rover_state_t *s)
         s->pose.yaw_rad, s->pose.yaw_odom_rad, s->imu.valid ? "true" : "false");
 
     APPEND(
-        "\"safety\": {\"timeout_active\": %s, \"auto_brake\": %s, "
-        "\"front_invalid\": %s}}",
-        s->safety.timeout_active ? "true" : "false",
-        s->safety.auto_brake     ? "true" : "false",
-        s->safety.front_invalid  ? "true" : "false");
+        "\"safety\": {\"timeout_active\": %s}}",
+        s->safety.timeout_active ? "true" : "false");
 
     return pos;
 }
