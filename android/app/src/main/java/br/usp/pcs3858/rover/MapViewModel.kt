@@ -34,7 +34,7 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _config = MutableStateFlow(
         BrokerConfig(
-            host = prefs.getString("host", "") ?: "",
+            host = prefs.getString("host", ROVER_BROKER) ?: ROVER_BROKER,
             port = prefs.getInt("port", 1883),
             roverId = prefs.getString("rover_id", "01") ?: "01",
         )
@@ -99,5 +99,10 @@ class MapViewModel(app: Application) : AndroidViewModel(app) {
         map.ingest(t)
         _latest.value = t
         _version.value++
+    }
+
+    private companion object {
+        /* The broker the rover hosts on its own access point. */
+        const val ROVER_BROKER = "192.168.4.1"
     }
 }
