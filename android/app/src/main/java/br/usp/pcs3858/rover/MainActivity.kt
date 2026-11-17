@@ -24,6 +24,7 @@ import br.usp.pcs3858.rover.ui.ControlScreen
 class MainActivity : ComponentActivity() {
 
     private val vm: RoverViewModel by viewModels()
+    private val mapVm: MapViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +39,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 ControlScreen(
                     vm = vm,
+                    mapVm = mapVm,
                     hasPermission = hasPermission,
                     onRequestPermission = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
