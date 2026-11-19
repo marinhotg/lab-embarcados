@@ -2,6 +2,9 @@ package br.usp.pcs3858.rover.telemetry
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
@@ -18,8 +21,12 @@ sealed interface FeedEvent {
     data class Message(val payload: String) : FeedEvent
 }
 
-/* Subscribes to rover/{id}/telemetry. Paho reconnects on its own after a drop;
- * every (re)connection subscribes again. */
+private const val RETRY_MS = 2000L
+
+/* Subscribes to rover/{id}/telemetry and keeps trying every RETRY_MS while the
+ * broker is unreachable, including before the first connection: the broker
+ * lives on the rover, so it disappears whenever the ESP32 reboots. Paho's own
+ * reconnect only covers drops after a first success, with a growing backoff. */
 fun mqttFeed(host: String, port: Int, roverId: String): Flow<FeedEvent> = callbackFlow {
     val topic = "rover/$roverId/telemetry"
     val client = MqttClient("tcp://$host:$port", "rover-app-${System.currentTimeMillis()}", MemoryPersistence())
@@ -31,7 +38,7 @@ fun mqttFeed(host: String, port: Int, roverId: String): Flow<FeedEvent> = callba
         }
 
         override fun connectionLost(cause: Throwable?) {
-            trySend(FeedEvent.Lost(cause?.message ?: "conexão perdida"))
+            trySend(FeedEvent.Lost("conexão perdida, tentando de novo"))
         }
 
         override fun messageArrived(topic: String?, message: MqttMessage) {
@@ -42,20 +49,27 @@ fun mqttFeed(host: String, port: Int, roverId: String): Flow<FeedEvent> = callba
     })
 
     val options = MqttConnectOptions().apply {
-        isAutomaticReconnect = true
+        isAutomaticReconnect = false
         isCleanSession = true
-        connectionTimeout = 5
-        keepAliveInterval = 10
+        connectionTimeout = 3
+        keepAliveInterval = 5
     }
 
-    try {
-        client.connect(options)
-    } catch (e: Exception) {
-        trySend(FeedEvent.Lost(e.message ?: "broker não respondeu"))
-        close()
+    val keeper = launch {
+        while (isActive) {
+            if (!client.isConnected) {
+                try {
+                    client.connect(options)
+                } catch (e: Exception) {
+                    trySend(FeedEvent.Lost("sem resposta, tentando de novo"))
+                }
+            }
+            delay(RETRY_MS)
+        }
     }
 
     awaitClose {
+        keeper.cancel()
         runCatching { if (client.isConnected) client.disconnect() }
         runCatching { client.close() }
     }

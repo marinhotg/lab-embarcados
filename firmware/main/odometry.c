@@ -1,8 +1,8 @@
 /* Differential-drive odometry fused with the MPU6050 gyro. Everything is in
- * radians; encoder pulses are counted by interrupt. */
+ * radians; encoder pulses are counted by the PCNT peripheral. */
 #include <math.h>
 
-#include "driver/gpio.h"
+#include "driver/pulse_cnt.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -15,25 +15,48 @@
 
 static const char *TAG = "odometry";
 
-/* Monotonic counters, never reset. The ISR is the only writer and the task the
- * only reader, so the difference between two samples is exact without a
- * critical section: an aligned 32-bit increment is atomic, and a late read only
- * defers the pulse to the next cycle. */
-static volatile uint32_t s_pulses_left;
-static volatile uint32_t s_pulses_right;
+/* Hardware counters with a glitch filter: the motor PWM couples microsecond
+ * spikes into the encoder wires, which a GPIO interrupt counted as slots and
+ * turned into metres of phantom travel. A real slot lasts milliseconds. The
+ * counts accumulate past the 16-bit limit and are never cleared, so the
+ * difference between two samples is exact. */
+static pcnt_unit_handle_t s_encoder_left;
+static pcnt_unit_handle_t s_encoder_right;
 
 static bool s_imu_ok;
 
-static void IRAM_ATTR encoder_left_isr(void *arg)
+static pcnt_unit_handle_t encoder_unit(int gpio)
 {
-    (void)arg;
-    s_pulses_left++;
+    pcnt_unit_config_t unit_cfg = {
+        .low_limit  = -1,
+        .high_limit = ENCODER_PCNT_LIMIT,
+        .flags.accum_count = 1,
+    };
+    pcnt_unit_handle_t unit;
+    ESP_ERROR_CHECK(pcnt_new_unit(&unit_cfg, &unit));
+
+    pcnt_glitch_filter_config_t filter = { .max_glitch_ns = ENCODER_GLITCH_NS };
+    ESP_ERROR_CHECK(pcnt_unit_set_glitch_filter(unit, &filter));
+
+    pcnt_chan_config_t chan_cfg = { .edge_gpio_num = gpio, .level_gpio_num = -1 };
+    pcnt_channel_handle_t chan;
+    ESP_ERROR_CHECK(pcnt_new_channel(unit, &chan_cfg, &chan));
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(chan,
+        PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_HOLD));
+
+    /* accum_count needs a watch point at the limit to carry the overflow. */
+    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(unit, ENCODER_PCNT_LIMIT));
+    ESP_ERROR_CHECK(pcnt_unit_enable(unit));
+    ESP_ERROR_CHECK(pcnt_unit_clear_count(unit));
+    ESP_ERROR_CHECK(pcnt_unit_start(unit));
+    return unit;
 }
 
-static void IRAM_ATTR encoder_right_isr(void *arg)
+static uint32_t encoder_count(pcnt_unit_handle_t unit)
 {
-    (void)arg;
-    s_pulses_right++;
+    int count = 0;
+    pcnt_unit_get_count(unit, &count);
+    return (uint32_t)count;
 }
 
 static float wrap_pi(float angle)
@@ -95,8 +118,8 @@ static void odometry_task(void *arg)
 
     TickType_t next = xTaskGetTickCount();
     int64_t  last_us    = esp_timer_get_time();
-    uint32_t last_left  = s_pulses_left;
-    uint32_t last_right = s_pulses_right;
+    uint32_t last_left  = encoder_count(s_encoder_left);
+    uint32_t last_right = encoder_count(s_encoder_right);
 
     for (;;) {
         vTaskDelayUntil(&next, pdMS_TO_TICKS(PERIOD_ODOMETRY_MS));
@@ -109,8 +132,8 @@ static void odometry_task(void *arg)
         }
 
         /* Unsigned subtraction handles counter wrap-around. */
-        uint32_t now_left  = s_pulses_left;
-        uint32_t now_right = s_pulses_right;
+        uint32_t now_left  = encoder_count(s_encoder_left);
+        uint32_t now_right = encoder_count(s_encoder_right);
         uint32_t pulses_left  = now_left  - last_left;
         uint32_t pulses_right = now_right - last_right;
         last_left  = now_left;
@@ -165,19 +188,9 @@ static void odometry_task(void *arg)
 
 void odometry_start(void)
 {
-    /* GPIO 34/35 have no internal pulls; these flags are no-ops, the external
-     * pull-up is required. */
-    gpio_config_t enc_cfg = {
-        .pin_bit_mask = (1ULL << PIN_ENCODER_LEFT) | (1ULL << PIN_ENCODER_RIGHT),
-        .mode         = GPIO_MODE_INPUT,
-        .pull_up_en   = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type    = GPIO_INTR_POSEDGE,
-    };
-    ESP_ERROR_CHECK(gpio_config(&enc_cfg));
-
-    ESP_ERROR_CHECK(gpio_isr_handler_add(PIN_ENCODER_LEFT,  encoder_left_isr,  NULL));
-    ESP_ERROR_CHECK(gpio_isr_handler_add(PIN_ENCODER_RIGHT, encoder_right_isr, NULL));
+    /* GPIO 34/35 have no internal pulls: the external pull-up is required. */
+    s_encoder_left  = encoder_unit(PIN_ENCODER_LEFT);
+    s_encoder_right = encoder_unit(PIN_ENCODER_RIGHT);
 
     s_imu_ok = (mpu6050_init() == ESP_OK);
     if (s_imu_ok) {

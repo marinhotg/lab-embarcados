@@ -35,6 +35,9 @@
 /* Input-only pins without internal pull-up: external pull-up is mandatory. */
 #define PIN_ENCODER_LEFT       34
 #define PIN_ENCODER_RIGHT      35
+/* Pulses shorter than this are noise; the PCNT ceiling is ~12.7 us at 80 MHz. */
+#define ENCODER_GLITCH_NS      10000
+#define ENCODER_PCNT_LIMIT     30000
 
 #define PIN_I2C_SDA            21
 #define PIN_I2C_SCL            22
@@ -49,6 +52,7 @@
 #define OMEGA_MAX_RAD_S        1.50f     /* full scale of command 0x02 */
 #define MOTOR_DUTY_MIN         0.30f     /* below this the motor stalls */
 #define MOTOR_DUTY_MAX         1.00f
+#define MOTOR_RAMP_MS          300       /* rest to full speed */
 
 /* -1 flips a side at the H-bridge only; odometry keeps the logical sign.
  * Same effect as swapping that side's motor wires on its screw terminal. */
