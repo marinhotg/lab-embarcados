@@ -21,8 +21,7 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
-    /* Shared by the sonar echoes and the encoders; must precede any
-     * gpio_isr_handler_add. */
+    /* Used by the sonar echoes; must precede any gpio_isr_handler_add. */
     ESP_ERROR_CHECK(gpio_install_isr_service(0));
 
     state_init();

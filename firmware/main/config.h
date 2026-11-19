@@ -35,6 +35,9 @@
 /* Input-only pins without internal pull-up: external pull-up is mandatory. */
 #define PIN_ENCODER_LEFT       34
 #define PIN_ENCODER_RIGHT      35
+/* Pulses shorter than this are noise; the PCNT ceiling is ~12.7 us at 80 MHz. */
+#define ENCODER_GLITCH_NS      10000
+#define ENCODER_PCNT_LIMIT     30000
 
 #define PIN_I2C_SDA            21
 #define PIN_I2C_SCL            22
