@@ -49,6 +49,7 @@
 #define OMEGA_MAX_RAD_S        1.50f     /* full scale of command 0x02 */
 #define MOTOR_DUTY_MIN         0.30f     /* below this the motor stalls */
 #define MOTOR_DUTY_MAX         1.00f
+#define MOTOR_RAMP_MS          300       /* rest to full speed */
 
 /* -1 flips a side at the H-bridge only; odometry keeps the logical sign.
  * Same effect as swapping that side's motor wires on its screw terminal. */

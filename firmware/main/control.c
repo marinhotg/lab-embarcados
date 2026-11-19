@@ -60,9 +60,29 @@ static void speed_to_drive(float v_mps, int *dir, float *duty)
     *duty = MOTOR_DUTY_MIN + magnitude * (MOTOR_DUTY_MAX - MOTOR_DUTY_MIN);
 }
 
+/* Limits acceleration only: a step from rest to full speed draws a current
+ * spike that resets the ESP32. Slowing down, stopping and the command timeout
+ * apply at once, and a reversal passes through zero. */
+static float ramp(float current, float target)
+{
+    const float step = V_MAX_MPS * PERIOD_CONTROL_MS / (float)MOTOR_RAMP_MS;
+
+    if (target * current < 0.0f) {
+        current = 0.0f;
+    }
+    if (fabsf(target) <= fabsf(current)) {
+        return target;
+    }
+    return (target > current) ? fminf(target, current + step)
+                              : fmaxf(target, current - step);
+}
+
 static void control_task(void *arg)
 {
     (void)arg;
+
+    float ramp_left  = 0.0f;
+    float ramp_right = 0.0f;
 
     for (;;) {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(PERIOD_CONTROL_MS));
@@ -88,6 +108,11 @@ static void control_task(void *arg)
             v_left  *= scale;
             v_right *= scale;
         }
+
+        ramp_left  = ramp(ramp_left,  v_left);
+        ramp_right = ramp(ramp_right, v_right);
+        v_left  = ramp_left;
+        v_right = ramp_right;
 
         int   dir_left, dir_right;
         float duty_left, duty_right;
